@@ -6,7 +6,7 @@ on:
 
 jobs:
   build-poppler:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
       # Шаг 1: Скачать OSXCross из релиза через gh CLI
@@ -76,6 +76,19 @@ jobs:
             -DENABLE_QT5=OFF \
             -DENABLE_QT6=OFF
 
+
+      - name: Install libxar from source
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+          git clone https://github.com/mackyle/xar.git
+          cd xar/xar
+          ./autogen.sh
+          ./configure --prefix=/usr
+          make
+          sudo make install
+          sudo ldconfig
+          
       # Шаг 8: Скомпилировать Poppler
       - name: Build Poppler
         run: |
