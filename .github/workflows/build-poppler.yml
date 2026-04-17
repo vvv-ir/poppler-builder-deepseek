@@ -1,10 +1,10 @@
-name: Build Poppler using OSXCross from Release
+name: Build Poppler using static OSXCross
 on:
   push:
   workflow_dispatch:
 jobs:
   build-poppler:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Download OSXCross from Release
         run: |
@@ -21,16 +21,12 @@ jobs:
           sudo tar -xzf osxcross-toolchain.tar.gz -C /usr/local/osxcross
           echo "/usr/local/osxcross/bin" >> $GITHUB_PATH
 
-      - name: Install libxar (available on Ubuntu 22.04)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxar-dev
-
       - name: Verify compiler
         run: o64-clang --version
 
       - name: Install Poppler build dependencies
         run: |
+          sudo apt-get update
           sudo apt-get install -y cmake ninja-build pkg-config \
             libfontconfig1-dev libcairo2-dev libjpeg-dev \
             libtiff-dev libpng-dev
