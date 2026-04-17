@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 jobs:
   build-poppler:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Download OSXCross from Release
         run: |
@@ -21,17 +21,10 @@ jobs:
           sudo tar -xzf osxcross-toolchain.tar.gz -C /usr/local/osxcross
           echo "/usr/local/osxcross/bin" >> $GITHUB_PATH
 
-      - name: Build libxar (required by ld64 on Ubuntu 24.04)
+      - name: Install libxar (available on Ubuntu 22.04)
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential autoconf libtool libxml2-dev libssl-dev
-          git clone https://github.com/mackyle/xar.git
-          cd xar/xar
-          ./autogen.sh
-          ./configure --prefix=/usr
-          make
-          sudo make install
-          sudo ldconfig
+          sudo apt-get install -y libxar-dev
 
       - name: Verify compiler
         run: o64-clang --version
