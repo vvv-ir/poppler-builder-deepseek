@@ -1,0 +1,80 @@
+name: Build Poppler using OSXCross from Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-poppler:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Шаг 1: Скачать OSXCross из релиза через официальный gh CLI
+      - name: Download OSXCross from Release
+        run: |
+          gh release download osxcross-latest \
+            --repo "vvv-ir/osxcross-base" \
+            --pattern "osxcross-toolchain.tar.gz" \
+            --output "./osxcross-toolchain.tar.gz"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Шаг 2: Распаковать OSXCross
+      - name: Extract OSXCross
+        run: |
+          sudo mkdir -p /usr/local/osxcross
+          sudo tar -xzf osxcross-toolchain.tar.gz -C /usr/local/osxcross
+          echo "/usr/local/osxcross/bin" >> $GITHUB_PATH
+
+      # Шаг 3: Проверить компилятор
+      - name: Verify compiler
+        run: o64-clang --version
+
+      # Шаг 4: Установить зависимости сборки Poppler
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config \
+            libfontconfig1-dev libcairo2-dev libjpeg-dev \
+            libtiff-dev libpng-dev
+
+      # Шаг 5: Скачать исходники Poppler
+      - name: Download Poppler source
+        run: |
+          wget https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
+          tar -xf poppler-24.08.0.tar.xz
+          mv poppler-24.08.0 poppler-source
+
+      # Шаг 6: Настроить CMake
+      - name: Configure CMake
+        run: |
+          mkdir build && cd build
+          cmake ../poppler-source \
+            -DCMAKE_C_COMPILER=o64-clang \
+            -DCMAKE_CXX_COMPILER=o64-clang++ \
+            -DCMAKE_SYSTEM_NAME=Darwin \
+            -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
+            -DCMAKE_SYSROOT=$(xcrun --show-sdk-path) \
+            -DBUILD_GTK_TESTS=OFF \
+            -DENABLE_QT5=OFF \
+            -DENABLE_QT6=OFF
+
+      # Шаг 7: Скомпилировать Poppler
+      - name: Build Poppler
+        run: |
+          cd build
+          make -j$(nproc)
+
+      # Шаг 8: Подготовить бинарники
+      - name: Prepare binaries
+        run: |
+          mkdir poppler-binaries
+          cp build/utils/pdftoppm poppler-binaries/
+          cp build/utils/pdftotext poppler-binaries/
+          cp build/utils/pdfinfo poppler-binaries/
+
+      # Шаг 9: Сохранить результат
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: poppler-high-sierra
+          path: poppler-binaries
