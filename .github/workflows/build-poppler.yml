@@ -6,7 +6,7 @@ on:
 
 jobs:
   build-poppler:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
       # Шаг 1: Скачать OSXCross из релиза через gh CLI
