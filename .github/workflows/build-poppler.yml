@@ -1,4 +1,4 @@
-name: Build Poppler using static OSXCross
+name: Build Poppler using OSXCross from Release
 on:
   push:
   workflow_dispatch:
@@ -21,12 +21,31 @@ jobs:
           sudo tar -xzf osxcross-toolchain.tar.gz -C /usr/local/osxcross
           echo "/usr/local/osxcross/bin" >> $GITHUB_PATH
 
-      - name: Verify compiler
-        run: o64-clang --version
+      - name: Install build tools and OpenSSL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf libtool libxml2-dev libssl-dev
+
+      - name: Build and install libxar (required by ld64)
+        run: |
+          git clone https://github.com/mackyle/xar.git
+          cd xar/xar
+          ./autogen.sh
+          # Указываем путь к OpenSSL, чтобы configure нашёл libcrypto
+          ./configure --prefix=/usr --with-libssl-prefix=/usr
+          make
+          sudo make install
+          sudo ldconfig
+          # Проверяем, что библиотека появилась
+          ls -la /usr/lib/libxar* || echo "libxar installation failed"
+
+      - name: Verify compiler and linker
+        run: |
+          o64-clang --version
+          ldd /usr/local/osxcross/bin/x86_64-apple-darwin17-ld | grep xar || echo "libxar linked ok"
 
       - name: Install Poppler build dependencies
         run: |
-          sudo apt-get update
           sudo apt-get install -y cmake ninja-build pkg-config \
             libfontconfig1-dev libcairo2-dev libjpeg-dev \
             libtiff-dev libpng-dev
