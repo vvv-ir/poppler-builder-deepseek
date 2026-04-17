@@ -1,4 +1,4 @@
-name: Build Poppler using Docker OSXCross
+name: Build Poppler with self-built OSXCross
 on:
   push:
   workflow_dispatch:
@@ -6,14 +6,32 @@ jobs:
   build-poppler:
     runs-on: ubuntu-latest
     container:
-      image: tpoechtrager/osxcross:latest
+      image: ubuntu:22.04
     steps:
-      - name: Install build dependencies (inside container)
+      - name: Install dependencies
         run: |
           apt-get update
-          apt-get install -y wget cmake ninja-build pkg-config \
-            libfontconfig1-dev libcairo2-dev libjpeg-dev \
-            libtiff-dev libpng-dev
+          apt-get install -y git make cmake clang patch wget xz-utils \
+            libxml2-dev libssl-dev build-essential autoconf libtool \
+            ninja-build pkg-config libfontconfig1-dev libcairo2-dev \
+            libjpeg-dev libtiff-dev libpng-dev
+
+      - name: Clone OSXCross
+        run: git clone https://github.com/tpoechtrager/osxcross.git
+
+      - name: Download MacOSX10.13.sdk
+        run: |
+          mkdir -p osxcross/tarballs
+          wget -O osxcross/tarballs/MacOSX10.13.sdk.tar.xz \
+            https://github.com/phracker/MacOSX-SDKs/releases/download/10.13/MacOSX10.13.sdk.tar.xz
+
+      - name: Build OSXCross
+        run: |
+          cd osxcross
+          UNATTENDED=1 ./build.sh
+
+      - name: Add OSXCross to PATH
+        run: echo "$(pwd)/osxcross/target/bin" >> $GITHUB_PATH
 
       - name: Download Poppler source
         run: |
@@ -24,9 +42,10 @@ jobs:
       - name: Configure CMake
         run: |
           mkdir build && cd build
-          SDK_PATH=/osxcross/SDK/MacOSX10.13.sdk
-          if [ ! -d "$SDK_PATH" ]; then
-            SDK_PATH=$(find /osxcross -name "MacOSX*.sdk" -type d | head -1)
+          SDK_PATH=$(find ../osxcross -name "MacOSX*.sdk" -type d | head -1)
+          if [ -z "$SDK_PATH" ]; then
+            echo "Error: SDK not found"
+            exit 1
           fi
           echo "Using SDK: $SDK_PATH"
           cmake ../poppler-source \
