@@ -1,52 +1,17 @@
-name: Build Poppler using OSXCross from Release
+name: Build Poppler using Docker OSXCross
 on:
   push:
   workflow_dispatch:
 jobs:
   build-poppler:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: tpoechtrager/osxcross:latest
     steps:
-      - name: Download OSXCross from Release
+      - name: Install build dependencies (inside container)
         run: |
-          gh release download osxcross-latest \
-            --repo "vvv-ir/osxcross_deepseek_way" \
-            --pattern "osxcross-toolchain.tar.gz" \
-            --output "./osxcross-toolchain.tar.gz"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract OSXCross
-        run: |
-          sudo mkdir -p /usr/local/osxcross
-          sudo tar -xzf osxcross-toolchain.tar.gz -C /usr/local/osxcross
-          echo "/usr/local/osxcross/bin" >> $GITHUB_PATH
-
-      - name: Install build dependencies for libxar
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential autoconf libtool libxml2-dev libssl-dev
-
-      - name: Build and install libxar with OpenSSL 1.1 compatibility
-        run: |
-          git clone https://github.com/mackyle/xar.git
-          cd xar/xar
-          ./autogen.sh
-          # Устанавливаем флаг совместимости для OpenSSL 3.x (имитируем 1.1)
-          export CFLAGS="-DOPENSSL_API_COMPAT=0x10100000L"
-          ./configure --prefix=/usr --with-libssl-prefix=/usr
-          make
-          sudo make install
-          sudo ldconfig
-          ls -la /usr/lib/libxar*
-
-      - name: Verify linker finds libxar
-        run: |
-          ldd /usr/local/osxcross/bin/x86_64-apple-darwin17-ld | grep xar
-          o64-clang --version
-
-      - name: Install Poppler build dependencies
-        run: |
-          sudo apt-get install -y cmake ninja-build pkg-config \
+          apt-get update
+          apt-get install -y wget cmake ninja-build pkg-config \
             libfontconfig1-dev libcairo2-dev libjpeg-dev \
             libtiff-dev libpng-dev
 
@@ -59,10 +24,9 @@ jobs:
       - name: Configure CMake
         run: |
           mkdir build && cd build
-          SDK_PATH=$(find /usr/local/osxcross -name "MacOSX*.sdk" -type d | head -1)
-          if [ -z "$SDK_PATH" ]; then
-            echo "Error: SDK not found"
-            exit 1
+          SDK_PATH=/osxcross/SDK/MacOSX10.13.sdk
+          if [ ! -d "$SDK_PATH" ]; then
+            SDK_PATH=$(find /osxcross -name "MacOSX*.sdk" -type d | head -1)
           fi
           echo "Using SDK: $SDK_PATH"
           cmake ../poppler-source \
