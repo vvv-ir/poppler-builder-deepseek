@@ -48,33 +48,33 @@ jobs:
           tar -xf poppler-24.08.0.tar.xz
           mv poppler-24.08.0 poppler-source
 
-- name: Configure CMake
-  run: |
-    mkdir build && cd build
-    # --- Это новая, более гибкая логика поиска ---
-    # Попробуем найти папку SDK по одному из двух самых вероятных путей
-    if [ -d "/usr/local/osxcross/SDK/MacOSX10.13.sdk" ]; then
-      SDK_PATH="/usr/local/osxcross/SDK/MacOSX10.13.sdk"
-    else
-      SDK_PATH=$(find /usr/local/osxcross -name "MacOSX*.sdk" -type d | head -1)
-    fi
+      - name: Configure CMake
+        run: |
+          mkdir build && cd build
+          # --- Это новая, более гибкая логика поиска ---
+          # Попробуем найти папку SDK по одному из двух самых вероятных путей
+          if [ -d "/usr/local/osxcross/SDK/MacOSX10.13.sdk" ]; then
+            SDK_PATH="/usr/local/osxcross/SDK/MacOSX10.13.sdk"
+          else
+            SDK_PATH=$(find /usr/local/osxcross -name "MacOSX*.sdk" -type d | head -1)
+          fi
     
-    if [ -z "$SDK_PATH" ] || [ ! -d "$SDK_PATH" ]; then
-      echo "Error: macOS SDK not found in /usr/local/osxcross!"
-      exit 1
-    fi
-    # -----------------------------------------
+          if [ -z "$SDK_PATH" ] || [ ! -d "$SDK_PATH" ]; then
+            echo "Error: macOS SDK not found in /usr/local/osxcross!"
+            exit 1
+          fi
+          # -----------------------------------------
     
-    echo "Using SDK: $SDK_PATH"
-    cmake ../poppler-source \
-      -DCMAKE_C_COMPILER=o64-clang \
-      -DCMAKE_CXX_COMPILER=o64-clang++ \
-      -DCMAKE_SYSTEM_NAME=Darwin \
-      -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
-      -DCMAKE_SYSROOT="$SDK_PATH" \
-      -DBUILD_GTK_TESTS=OFF \
-      -DENABLE_QT5=OFF \
-      -DENABLE_QT6=OFF
+          echo "Using SDK: $SDK_PATH"
+          cmake ../poppler-source \
+            -DCMAKE_C_COMPILER=o64-clang \
+            -DCMAKE_CXX_COMPILER=o64-clang++ \
+            -DCMAKE_SYSTEM_NAME=Darwin \
+            -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
+            -DCMAKE_SYSROOT="$SDK_PATH" \
+            -DBUILD_GTK_TESTS=OFF \
+            -DENABLE_QT5=OFF \
+            -DENABLE_QT6=OFF
 
       - name: Build Poppler
         run: |
