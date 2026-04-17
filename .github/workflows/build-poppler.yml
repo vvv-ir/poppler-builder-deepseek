@@ -1,56 +1,54 @@
-name: Build Poppler using setup-osxcross Action
+name: Build Poppler with crazymax/osxcross
 on:
   push:
   workflow_dispatch:
-
 jobs:
   build-poppler:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: crazymax/osxcross:latest
     steps:
-      - name: Install Poppler build dependencies
+      - name: Install additional tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build pkg-config \
+          apt-get update
+          apt-get install -y wget cmake ninja-build pkg-config \
             libfontconfig1-dev libcairo2-dev libjpeg-dev \
-            libtiff-dev libpng-dev libfreetype-dev
-
-      - name: Setup OSXCross
-        uses: mbround18/setup-osxcross@v1
-        with:
-          osx-version: "10.13"
-
+            libtiff-dev libpng-dev
       - name: Download Poppler source
         run: |
           wget https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
           tar -xf poppler-24.08.0.tar.xz
           mv poppler-24.08.0 poppler-source
-
       - name: Configure CMake
         run: |
           mkdir build && cd build
+          SDK_PATH=$(find /osxcross -name "MacOSX*.sdk" -type d | head -1)
+          if [ -z "$SDK_PATH" ]; then
+            echo "Error: SDK not found"
+            exit 1
+          fi
+          echo "Using SDK: $SDK_PATH"
           cmake ../poppler-source \
             -DCMAKE_C_COMPILER=o64-clang \
             -DCMAKE_CXX_COMPILER=o64-clang++ \
             -DCMAKE_SYSTEM_NAME=Darwin \
             -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
+            -DCMAKE_SYSROOT="$SDK_PATH" \
             -DBUILD_GTK_TESTS=OFF \
             -DENABLE_QT5=OFF \
             -DENABLE_QT6=OFF \
             -DENABLE_OPENSSL=OFF
-
       - name: Build Poppler
         run: |
           cd build
           make -j$(nproc)
-
       - name: Prepare binaries
         run: |
           mkdir poppler-binaries
           cp build/utils/pdftoppm poppler-binaries/
           cp build/utils/pdftotext poppler-binaries/
           cp build/utils/pdfinfo poppler-binaries/
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
