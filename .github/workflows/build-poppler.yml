@@ -21,16 +21,28 @@ jobs:
           sudo tar -xzf osxcross-toolchain.tar.gz -C /usr/local/osxcross
           echo "/usr/local/osxcross/bin" >> $GITHUB_PATH
 
-      - name: Enable universe repository and install libxar
+      - name: Install build dependencies for libxar
         run: |
-          sudo add-apt-repository universe
           sudo apt-get update
-          sudo apt-get install -y libxar-dev
+          sudo apt-get install -y build-essential autoconf libtool libxml2-dev libssl-dev
 
-      - name: Verify compiler and linker
+      - name: Build and install libxar with OpenSSL 1.1 compatibility
         run: |
+          git clone https://github.com/mackyle/xar.git
+          cd xar/xar
+          ./autogen.sh
+          # Устанавливаем флаг совместимости для OpenSSL 3.x (имитируем 1.1)
+          export CFLAGS="-DOPENSSL_API_COMPAT=0x10100000L"
+          ./configure --prefix=/usr --with-libssl-prefix=/usr
+          make
+          sudo make install
+          sudo ldconfig
+          ls -la /usr/lib/libxar*
+
+      - name: Verify linker finds libxar
+        run: |
+          ldd /usr/local/osxcross/bin/x86_64-apple-darwin17-ld | grep xar
           o64-clang --version
-          ldd /usr/local/osxcross/bin/x86_64-apple-darwin17-ld | grep xar || echo "libxar linked ok"
 
       - name: Install Poppler build dependencies
         run: |
