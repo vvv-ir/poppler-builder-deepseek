@@ -12,7 +12,7 @@ jobs:
       - name: Download OSXCross from Release
         run: |
           gh release download osxcross-latest \
-            --repo "vvv-ir/osxcross-base" \
+            --repo "vvv-ir/osxcross_deepseek_way" \
             --pattern "osxcross-toolchain.tar.gz" \
             --output "./osxcross-toolchain.tar.gz"
         env:
