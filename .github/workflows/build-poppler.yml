@@ -1,13 +1,10 @@
 name: Build Poppler using OSXCross from Release
-
 on:
-  push: 
+  push:
   workflow_dispatch:
-
 jobs:
   build-poppler:
-    runs-on: ubuntu-latest   # ubuntu 24.04
-
+    runs-on: ubuntu-latest
     steps:
       - name: Download OSXCross from Release
         run: |
@@ -24,19 +21,28 @@ jobs:
           sudo tar -xzf osxcross-toolchain.tar.gz -C /usr/local/osxcross
           echo "/usr/local/osxcross/bin" >> $GITHUB_PATH
 
-      # Сборка libxar.so.1 из исходников (т.к. в Ubuntu 24.04 нет пакета)
-      - name: Install libxar1 (the library ld64 needs)
+      - name: Install build tools and dependencies for libxar
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxar1
-          # Проверяем, что библиотека появилась
-          ls -la /usr/lib/libxar* || echo "libxar not found"
-          ldd /usr/local/osxcross/bin/x86_64-apple-darwin17-ld | grep xar || echo "xar linkage ok"
+          sudo apt-get install -y build-essential cmake autoconf libtool \
+                                  libxml2-dev libssl-dev
+
+      - name: Build and install libxar (required by ld64 on Ubuntu 24.04)
+        run: |
+          git clone https://github.com/mackyle/xar.git
+          cd xar/xar
+          ./autogen.sh
+          ./configure --prefix=/usr
+          make
+          sudo make install
+          sudo ldconfig
+          # Verify library is installed
+          ls -la /usr/lib/libxar* || echo "libxar installation failed"
 
       - name: Verify compiler
         run: o64-clang --version
 
-      - name: Install build dependencies for Poppler
+      - name: Install dependencies for Poppler
         run: |
           sudo apt-get install -y cmake ninja-build pkg-config \
             libfontconfig1-dev libcairo2-dev libjpeg-dev \
@@ -51,20 +57,11 @@ jobs:
       - name: Configure CMake
         run: |
           mkdir build && cd build
-          # --- Это новая, более гибкая логика поиска ---
-          # Попробуем найти папку SDK по одному из двух самых вероятных путей
-          if [ -d "/usr/local/osxcross/SDK/MacOSX10.13.sdk" ]; then
-            SDK_PATH="/usr/local/osxcross/SDK/MacOSX10.13.sdk"
-          else
-            SDK_PATH=$(find /usr/local/osxcross -name "MacOSX*.sdk" -type d | head -1)
-          fi
-    
-          if [ -z "$SDK_PATH" ] || [ ! -d "$SDK_PATH" ]; then
-            echo "Error: macOS SDK not found in /usr/local/osxcross!"
+          SDK_PATH=$(find /usr/local/osxcross -name "MacOSX*.sdk" -type d | head -1)
+          if [ -z "$SDK_PATH" ]; then
+            echo "Error: SDK not found in /usr/local/osxcross"
             exit 1
           fi
-          # -----------------------------------------
-    
           echo "Using SDK: $SDK_PATH"
           cmake ../poppler-source \
             -DCMAKE_C_COMPILER=o64-clang \
