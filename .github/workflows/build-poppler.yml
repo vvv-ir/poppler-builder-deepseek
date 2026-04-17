@@ -1,19 +1,36 @@
-name: Build Poppler using filc/osxcross Docker image
+name: Build Poppler using OSXCross from Source
 on:
   push:
   workflow_dispatch:
+
 jobs:
   build-poppler:
-    runs-on: ubuntu-latest
-    container:
-      image: filc/osxcross:latest
+    runs-on: ubuntu-22.04
     steps:
-      - name: Install additional build tools (inside container)
+      - name: Install build dependencies
         run: |
-          apt-get update
-          apt-get install -y wget cmake ninja-build pkg-config \
-            libfontconfig1-dev libcairo2-dev libjpeg-dev \
-            libtiff-dev libpng-dev
+          sudo apt-get update
+          sudo apt-get install -y git make cmake clang patch wget xz-utils \
+            libxml2-dev libssl-dev build-essential autoconf libtool \
+            ninja-build pkg-config libfontconfig1-dev libcairo2-dev \
+            libjpeg-dev libtiff-dev libpng-dev
+
+      - name: Clone OSXCross repository
+        run: git clone https://github.com/tpoechtrager/osxcross.git
+
+      - name: Download MacOSX10.13.sdk
+        run: |
+          mkdir -p osxcross/tarballs
+          wget -O osxcross/tarballs/MacOSX10.13.sdk.tar.xz \
+            https://github.com/phracker/MacOSX-SDKs/releases/download/10.13/MacOSX10.13.sdk.tar.xz
+
+      - name: Build OSXCross
+        run: |
+          cd osxcross
+          UNATTENDED=1 ./build.sh
+
+      - name: Add OSXCross to PATH
+        run: echo "$(pwd)/osxcross/target/bin" >> $GITHUB_PATH
 
       - name: Download Poppler source
         run: |
@@ -24,10 +41,10 @@ jobs:
       - name: Configure CMake
         run: |
           mkdir build && cd build
-          # SDK обычно лежит в /osxcross/SDK/MacOSX10.13.sdk
-          SDK_PATH="/osxcross/SDK/MacOSX10.13.sdk"
-          if [ ! -d "$SDK_PATH" ]; then
-            SDK_PATH=$(find /osxcross -name "MacOSX*.sdk" -type d | head -1)
+          SDK_PATH=$(find ../osxcross -name "MacOSX*.sdk" -type d | head -1)
+          if [ -z "$SDK_PATH" ]; then
+            echo "Error: SDK not found"
+            exit 1
           fi
           echo "Using SDK: $SDK_PATH"
           cmake ../poppler-source \
