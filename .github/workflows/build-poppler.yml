@@ -6,10 +6,9 @@ on:
 
 jobs:
   build-poppler:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest   # ubuntu 24.04
 
     steps:
-      # Шаг 1: Скачать OSXCross из релиза через gh CLI
       - name: Download OSXCross from Release
         run: |
           gh release download osxcross-latest \
@@ -19,50 +18,48 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Шаг 2: Распаковать OSXCross в /usr/local/osxcross
       - name: Extract OSXCross
         run: |
           sudo mkdir -p /usr/local/osxcross
           sudo tar -xzf osxcross-toolchain.tar.gz -C /usr/local/osxcross
           echo "/usr/local/osxcross/bin" >> $GITHUB_PATH
 
-      # Шаг 3: Установить недостающие библиотеки для линковщика OSXCross
-      - name: Install OSXCross dependencies
+      # Сборка libxar.so.1 из исходников (т.к. в Ubuntu 24.04 нет пакета)
+      - name: Build libxar from source
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxar-dev libssl-dev
+          sudo apt-get install -y build-essential cmake autoconf libtool
+          git clone https://github.com/mackyle/xar.git
+          cd xar/xar
+          ./autogen.sh
+          ./configure --prefix=/usr
+          make
+          sudo make install
+          sudo ldconfig
+          # Проверяем, что библиотека появилась
+          ls -la /usr/lib/libxar* || echo "libxar not found"
+          ldd /usr/local/osxcross/bin/x86_64-apple-darwin17-ld | grep xar || echo "xar linkage ok"
 
-      # Шаг 4: Проверить компилятор
       - name: Verify compiler
-        run: |
-          o64-clang --version
-          # Найти путь к SDK внутри OSXCross
-          export SDKROOT=$(xcrun --show-sdk-path 2>/dev/null || echo "/usr/local/osxcross/SDK/MacOSX10.13.sdk")
-          echo "SDKROOT=$SDKROOT"
-          test -d "$SDKROOT" || (echo "SDK not found at $SDKROOT" && exit 1)
+        run: o64-clang --version
 
-      # Шаг 5: Установить зависимости сборки Poppler
-      - name: Install build dependencies
+      - name: Install build dependencies for Poppler
         run: |
           sudo apt-get install -y cmake ninja-build pkg-config \
             libfontconfig1-dev libcairo2-dev libjpeg-dev \
             libtiff-dev libpng-dev
 
-      # Шаг 6: Скачать исходники Poppler
       - name: Download Poppler source
         run: |
           wget https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
           tar -xf poppler-24.08.0.tar.xz
           mv poppler-24.08.0 poppler-source
 
-      # Шаг 7: Настроить CMake (явно указать sysroot)
       - name: Configure CMake
         run: |
           mkdir build && cd build
-          # Определяем путь к SDK (обычно /usr/local/osxcross/SDK/MacOSX10.13.sdk)
           SDK_PATH="/usr/local/osxcross/SDK/MacOSX10.13.sdk"
           if [ ! -d "$SDK_PATH" ]; then
-            echo "SDK not found at $SDK_PATH, searching..."
             SDK_PATH=$(find /usr/local/osxcross -name "MacOSX*.sdk" -type d | head -1)
           fi
           echo "Using SDK: $SDK_PATH"
@@ -76,26 +73,11 @@ jobs:
             -DENABLE_QT5=OFF \
             -DENABLE_QT6=OFF
 
-
-      - name: Install libxar from source
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake
-          git clone https://github.com/mackyle/xar.git
-          cd xar/xar
-          ./autogen.sh
-          ./configure --prefix=/usr
-          make
-          sudo make install
-          sudo ldconfig
-          
-      # Шаг 8: Скомпилировать Poppler
       - name: Build Poppler
         run: |
           cd build
           make -j$(nproc)
 
-      # Шаг 9: Подготовить бинарники
       - name: Prepare binaries
         run: |
           mkdir poppler-binaries
@@ -103,7 +85,6 @@ jobs:
           cp build/utils/pdftotext poppler-binaries/
           cp build/utils/pdfinfo poppler-binaries/
 
-      # Шаг 10: Сохранить результат
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
