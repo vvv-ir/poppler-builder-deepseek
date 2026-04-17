@@ -7,28 +7,24 @@ jobs:
   build-poppler:
     runs-on: ubuntu-22.04
     steps:
-      # 1. Устанавливаем зависимости для сборки Poppler (библиотеки изображений и т.д.)
       - name: Install Poppler build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build pkg-config \
             libfontconfig1-dev libcairo2-dev libjpeg-dev \
-            libtiff-dev libpng-dev
+            libtiff-dev libpng-dev libfreetype-dev
 
-      # 2. Устанавливаем OSXCross с помощью готового Action
       - name: Setup OSXCross
         uses: mbround18/setup-osxcross@v1
         with:
-          osx-version: "10.13" # Целевая версия macOS - High Sierra
+          osx-version: "10.13"
 
-      # 3. Скачиваем исходный код Poppler
       - name: Download Poppler source
         run: |
           wget https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
           tar -xf poppler-24.08.0.tar.xz
           mv poppler-24.08.0 poppler-source
 
-      # 4. Настраиваем сборку через CMake
       - name: Configure CMake
         run: |
           mkdir build && cd build
@@ -43,13 +39,11 @@ jobs:
             -DENABLE_QT6=OFF \
             -DENABLE_OPENSSL=OFF
 
-      # 5. Компилируем Poppler
       - name: Build Poppler
         run: |
           cd build
           make -j$(nproc)
 
-      # 6. Подготавливаем бинарные файлы к выгрузке
       - name: Prepare binaries
         run: |
           mkdir poppler-binaries
@@ -57,7 +51,6 @@ jobs:
           cp build/utils/pdftotext poppler-binaries/
           cp build/utils/pdfinfo poppler-binaries/
 
-      # 7. Сохраняем результат как артефакт сборки
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
