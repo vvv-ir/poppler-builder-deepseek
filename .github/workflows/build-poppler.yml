@@ -30,7 +30,8 @@ jobs:
             -DBUILD_GTK_TESTS=OFF \
             -DENABLE_QT5=OFF \
             -DENABLE_QT6=OFF \
-            -DENABLE_OPENSSL=OFF
+            -DENABLE_OPENSSL=OFF \
+            -DENABLE_NSS3=OFF
       - name: Build Poppler
         run: |
           cd build
