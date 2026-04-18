@@ -1,0 +1,46 @@
+name: Build Poppler for High Sierra on macOS runner
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-13   # последний Intel-раннер с macOS 13, но соберём для 10.13
+    steps:
+      - name: Install dependencies via Homebrew
+        run: |
+          brew install cmake ninja pkg-config freetype fontconfig cairo jpeg libtiff libpng
+
+      - name: Download Poppler source
+        run: |
+          curl -LO https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
+          tar -xf poppler-24.08.0.tar.xz
+          mv poppler-24.08.0 poppler-source
+
+      - name: Configure CMake (target macOS 10.13)
+        run: |
+          mkdir build && cd build
+          cmake ../poppler-source \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
+            -DBUILD_GTK_TESTS=OFF \
+            -DENABLE_QT5=OFF \
+            -DENABLE_QT6=OFF \
+            -DENABLE_OPENSSL=OFF
+
+      - name: Build Poppler
+        run: |
+          cd build
+          make -j$(sysctl -n hw.ncpu)
+
+      - name: Prepare binaries
+        run: |
+          mkdir poppler-binaries
+          cp build/utils/pdftoppm poppler-binaries/
+          cp build/utils/pdftotext poppler-binaries/
+          cp build/utils/pdfinfo poppler-binaries/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: poppler-high-sierra
+          path: poppler-binaries
