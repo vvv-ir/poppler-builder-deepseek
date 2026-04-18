@@ -1,6 +1,5 @@
 name: Build Poppler for High Sierra on macOS runner
 on:
-  push:
   workflow_dispatch:
 
 jobs:
