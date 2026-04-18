@@ -1,72 +1,82 @@
-name: Build Poppler using OSXCross
+name: Build Poppler for macOS (High Sierra) on Ubuntu
 on:
-  push:
   workflow_dispatch:
+  push:
 
 jobs:
-  build-poppler:
+  build:
     runs-on: ubuntu-22.04
     steps:
-      # 1. Установка всех зависимостей для сборки в Ubuntu
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. Установка зависимостей (включая необходимые библиотеки)
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build pkg-config \
+          sudo apt-get install -y \
+            build-essential cmake ninja-build pkg-config \
             libfontconfig1-dev libcairo2-dev libjpeg-dev \
-            libtiff-dev libpng-dev autoconf libtool
+            libtiff-dev libpng-dev
 
-      # 2. Настройка OSXCross
-      - name: Setup OSXCross
-        uses: mbround18/setup-osxcross@v1
-        with:
-          osx-version: "10.13"
-
-      # 3. Сборка и установка Freetype для macOS
-      - name: Build Freetype for macOS
+      # 2. Клонируем и собираем osxcross
+      - name: Clone and build osxcross
         run: |
-          export PATH="/home/runner/work/_actions/mbround18/setup-osxcross/v1/osxcross/target/bin:$PATH"
+          git clone https://github.com/tpoechtrager/osxcross.git
+          cd osxcross
+          mkdir -p tarballs
+          # SDK 10.13 для High Sierra
+          wget -O tarballs/MacOSX10.13.sdk.tar.xz \
+            https://github.com/phracker/MacOSX-SDKs/releases/download/10.13/MacOSX10.13.sdk.tar.xz
+          UNATTENDED=1 ./build.sh
+
+      # 3. Собираем нужную библиотеку freetype для macOS
+      - name: Build freetype for macOS
+        run: |
+          export PATH=$(pwd)/osxcross/target/bin:$PATH
           wget https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
           tar -xzf freetype-2.13.2.tar.gz
           cd freetype-2.13.2
-          ./configure --host=x86_64-apple-darwin17 \
-            --prefix=$HOME/freetype-mac \
+          ./configure \
+            --host=x86_64-apple-darwin17 \
+            --prefix=$(pwd)/../freetype-install \
             CC=o64-clang CXX=o64-clang++
           make
           make install
 
-      # 4. Скачиваем исходный код Poppler
+      # 4. Скачиваем исходники Poppler
       - name: Download Poppler source
         run: |
           wget https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
           tar -xf poppler-24.08.0.tar.xz
           mv poppler-24.08.0 poppler-source
 
-      # 5. Настройка сборки Poppler через CMake (с явными путями к Freetype)
+      # 5. Конфигурация и сборка Poppler
       - name: Configure CMake
         run: |
           mkdir build && cd build
-          SDK_PATH=$(find /home/runner/work/_actions/mbround18/setup-osxcross/v1/osxcross -name "MacOSX*.sdk" -type d | head -1)
+          SDK_PATH=$(find ../osxcross -name "MacOSX*.sdk" -type d | head -1)
           cmake ../poppler-source \
-            -DCMAKE_C_COMPILER=o64-clang \
-            -DCMAKE_CXX_COMPILER=o64-clang++ \
+            -DCMAKE_C_COMPILER=$(pwd)/../osxcross/target/bin/o64-clang \
+            -DCMAKE_CXX_COMPILER=$(pwd)/../osxcross/target/bin/o64-clang++ \
             -DCMAKE_SYSTEM_NAME=Darwin \
             -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
             -DCMAKE_SYSROOT="$SDK_PATH" \
-            -DFREETYPE_INCLUDE_DIRS=$HOME/freetype-mac/include/freetype2 \
-            -DFREETYPE_LIBRARY=$HOME/freetype-mac/lib/libfreetype.a \
-            -DBUILD_GTK_TESTS=OFF \
+            -DFREETYPE_INCLUDE_DIRS=$(pwd)/../freetype-install/include/freetype2 \
+            -DFREETYPE_LIBRARY=$(pwd)/../freetype-install/lib/libfreetype.a \
+            -DENABLE_OPENSSL=OFF \
             -DENABLE_QT5=OFF \
             -DENABLE_QT6=OFF \
-            -DENABLE_OPENSSL=OFF
+            -DENABLE_GTK_DOC=OFF \
+            -DENABLE_LIBOPENJPEG=openjpeg2
 
-      # 6. Компиляция Poppler
       - name: Build Poppler
         run: |
           cd build
           make -j$(nproc)
 
-      # 7. Подготовка и выгрузка готовых бинарных файлов
+      # 6. Подготовка артефактов
       - name: Prepare binaries
         run: |
           mkdir poppler-binaries
