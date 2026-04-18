@@ -7,12 +7,10 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      # Переменные для кросс-компиляции
       TARGET_HOST: x86_64-apple-darwin17
       MACOSX_DEPLOYMENT_TARGET: 10.13
       DEPS_DIR: ${{ github.workspace }}/deps
       PKG_CONFIG_PATH: ${{ github.workspace }}/deps/lib/pkgconfig
-      PATH: ${{ github.workspace }}/osxcross/target/bin:${{ env.PATH }}
 
     steps:
       # 1. Загружаем ваш OSXCross из Release
@@ -31,7 +29,7 @@ jobs:
           tar -xzf osxcross-toolchain.tar.gz -C osxcross
           echo "$(pwd)/osxcross/bin" >> $GITHUB_PATH
 
-      # 2. Устанавливаем системные инструменты сборки (необходимы для компиляции зависимостей)
+      # 2. Устанавливаем системные инструменты сборки
       - name: Install system build tools
         run: |
           sudo apt-get update
@@ -45,7 +43,7 @@ jobs:
           mkdir -p $DEPS_DIR/lib $DEPS_DIR/include
           echo "PKG_CONFIG_PATH=$DEPS_DIR/lib/pkgconfig" >> $GITHUB_ENV
 
-      # --- 4. Сборка всех зависимостей ---
+      # --- 4. Сборка зависимостей ---
       # 4.1 zlib
       - name: Build zlib
         run: |
@@ -90,18 +88,17 @@ jobs:
           ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared
           make -j$(nproc) && make install
 
-      # 4.6 fontconfig (требует дополнительной настройки для кросс-компиляции)
+      # 4.6 fontconfig
       - name: Build fontconfig
         run: |
           wget https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.gz
           tar -xzf fontconfig-2.15.0.tar.gz && cd fontconfig-2.15.0
-          # Создаём кэш-файл для целевой системы, чтобы избежать ошибок при сборке
           mkdir -p $DEPS_DIR/etc/fonts && touch $DEPS_DIR/etc/fonts/fonts.conf
           ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared \
             --with-arch=x86_64 --with-expat=no
           make -j$(nproc) && make install
 
-      # 4.7 pixman (зависимость для cairo)
+      # 4.7 pixman
       - name: Build pixman
         run: |
           wget https://cairographics.org/releases/pixman-0.42.2.tar.gz
