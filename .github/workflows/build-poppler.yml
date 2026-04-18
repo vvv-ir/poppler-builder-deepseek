@@ -1,4 +1,4 @@
-name: Build Poppler with Isolated OSXCross
+name: Build Poppler with Isolated OSXCross (No Tests)
 on:
   workflow_dispatch:
   push:
@@ -14,7 +14,6 @@ jobs:
       PKG_CONFIG_PATH: ${{ github.workspace }}/deps/lib/pkgconfig
 
     steps:
-      # 1. Скачиваем OSXCross из релиза пользователя
       - name: Download OSXCross from Release
         run: |
           gh release download osxcross-latest \
@@ -30,7 +29,6 @@ jobs:
           tar -xzf osxcross-toolchain.tar.gz -C $OSXCROSS_ROOT
           echo "$OSXCROSS_ROOT/bin" >> $GITHUB_PATH
 
-      # 2. Устанавливаем системные инструменты сборки (нужны для компиляции зависимостей)
       - name: Install system build tools
         run: |
           sudo apt-get update
@@ -38,13 +36,11 @@ jobs:
             build-essential cmake ninja-build pkg-config \
             autoconf automake libtool
 
-      # 3. Создаём директорию для зависимостей
       - name: Create deps directory
         run: |
           mkdir -p $DEPS_DIR/lib $DEPS_DIR/include
           echo "PKG_CONFIG_PATH=$DEPS_DIR/lib/pkgconfig" >> $GITHUB_ENV
 
-      # 4. Создаём toolchain файл для CMake прямо в раннере
       - name: Create CMake toolchain file
         run: |
           cat > ${{ github.workspace }}/toolchain.cmake <<EOF
@@ -59,9 +55,8 @@ jobs:
           set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
           EOF
 
-      # --- Сборка зависимостей (все в DEPS_DIR) ---
-
-      # 4.1 zlib
+      # ========== Сборка зависимостей ==========
+      # zlib (автотулсы, тестов нет)
       - name: Build zlib
         run: |
           wget https://zlib.net/fossils/zlib-1.3.1.tar.gz
@@ -69,15 +64,23 @@ jobs:
           ./configure --prefix=$DEPS_DIR --static
           make -j$(nproc) && make install
 
-      # 4.2 libpng (отключаем сборку утилит)
+      # libpng (CMake, отключаем всё лишнее)
       - name: Build libpng
         run: |
           wget https://downloads.sourceforge.net/project/libpng/libpng16/1.6.43/libpng-1.6.43.tar.gz
           tar -xzf libpng-1.6.43.tar.gz && cd libpng-1.6.43
-          ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared --disable-tools
+          mkdir build && cd build
+          cmake .. \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/toolchain.cmake \
+            -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
+            -DPNG_SHARED=OFF \
+            -DPNG_TESTS=OFF \
+            -DPNG_TOOLS=OFF \
+            -DPNG_EXECUTABLES=OFF \
+            -DPNG_BUILD_ZLIB=OFF
           make -j$(nproc) && make install
 
-      # 4.3 libjpeg-turbo (используем CMake с toolchain)
+      # libjpeg-turbo (CMake)
       - name: Build libjpeg-turbo
         run: |
           wget https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.0.2.tar.gz
@@ -86,53 +89,66 @@ jobs:
           cmake .. \
             -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/toolchain.cmake \
             -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
-            -DENABLE_SHARED=OFF
+            -DENABLE_SHARED=OFF \
+            -DWITH_TURBOJPEG=OFF \
+            -DWITH_JAVA=OFF \
+            -DWITH_JPEG8=ON
           make -j$(nproc) && make install
 
-      # 4.4 libtiff (отключаем утилиты)
+      # libtiff (CMake)
       - name: Build libtiff
         run: |
           wget https://download.osgeo.org/libtiff/tiff-4.6.0.tar.gz
           tar -xzf tiff-4.6.0.tar.gz && cd tiff-4.6.0
-          ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared --disable-tools
+          mkdir build && cd build
+          cmake .. \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/toolchain.cmake \
+            -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
+            -DBUILD_SHARED_LIBS=OFF \
+            -Dtiff-tools=OFF \
+            -Dtiff-tests=OFF \
+            -Dtiff-contrib=OFF
           make -j$(nproc) && make install
 
-      # 4.5 freetype
+      # freetype (autotools)
       - name: Build freetype
         run: |
           wget https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
           tar -xzf freetype-2.13.2.tar.gz && cd freetype-2.13.2
-          ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared
+          ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared \
+            --without-bzip2 --without-png --without-harfbuzz --without-brotli
           make -j$(nproc) && make install
 
-      # 4.6 fontconfig (требуется эмуляция целевой системы)
+      # fontconfig (autotools)
       - name: Build fontconfig
         run: |
           wget https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.gz
           tar -xzf fontconfig-2.15.0.tar.gz && cd fontconfig-2.15.0
           mkdir -p $DEPS_DIR/etc/fonts && touch $DEPS_DIR/etc/fonts/fonts.conf
           ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared \
-            --with-arch=x86_64 --with-expat=no
+            --with-arch=x86_64 --with-expat=no --disable-docs --disable-tests
           make -j$(nproc) && make install
 
-      # 4.7 pixman
+      # pixman (autotools)
       - name: Build pixman
         run: |
           wget https://cairographics.org/releases/pixman-0.42.2.tar.gz
           tar -xzf pixman-0.42.2.tar.gz && cd pixman-0.42.2
-          ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared
+          ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared \
+            --disable-gtk --disable-libpng --disable-demos
           make -j$(nproc) && make install
 
-      # 4.8 cairo (отключаем xlib/xcb)
+      # cairo (autotools)
       - name: Build cairo
         run: |
           wget https://cairographics.org/releases/cairo-1.18.0.tar.xz
           tar -xf cairo-1.18.0.tar.xz && cd cairo-1.18.0
           ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared \
-            --enable-xlib=no --enable-xcb=no
+            --enable-xlib=no --enable-xcb=no --enable-qt=no --enable-gtk-doc=no \
+            --disable-trace --disable-svg --disable-ps --disable-pdf
           make -j$(nproc) && make install
 
-      # 4.9 openjpeg (используем CMake с toolchain)
+      # openjpeg (CMake)
       - name: Build openjpeg
         run: |
           wget https://github.com/uclouvain/openjpeg/archive/refs/tags/v2.5.2.tar.gz
@@ -141,10 +157,12 @@ jobs:
           cmake .. \
             -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/toolchain.cmake \
             -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
-            -DBUILD_SHARED_LIBS=OFF
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_CODEC=OFF
           make -j$(nproc) && make install
 
-      # --- Сборка Poppler ---
+      # ========== Сборка Poppler ==========
       - name: Download Poppler source
         run: |
           wget https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
@@ -161,7 +179,10 @@ jobs:
             -DENABLE_QT5=OFF \
             -DENABLE_QT6=OFF \
             -DENABLE_GTK_DOC=OFF \
-            -DENABLE_LIBOPENJPEG=openjpeg2
+            -DENABLE_LIBOPENJPEG=openjpeg2 \
+            -DBUILD_GTK_TESTS=OFF \
+            -DENABLE_CPP=ON \
+            -DENABLE_GLIB=OFF
 
       - name: Build Poppler
         run: |
