@@ -1,5 +1,7 @@
-name: Build Poppler for High Sierra
-on: workflow_dispatch
+name: Build Poppler for High Sierra (Ubuntu + container)
+on:
+  workflow_dispatch:
+  push:
 
 jobs:
   build:
@@ -7,7 +9,7 @@ jobs:
     container:
       image: ghcr.io/crazy-max/osxcross:latest
     steps:
-      - name: Install Poppler build dependencies
+      - name: Install dependencies inside container
         run: |
           apt-get update
           apt-get install -y wget cmake ninja-build pkg-config \
