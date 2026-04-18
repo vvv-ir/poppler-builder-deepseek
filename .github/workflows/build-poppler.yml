@@ -20,14 +20,15 @@ jobs:
 
       - name: Build Freetype for macOS
         run: |
+          export PATH="/home/runner/work/_actions/mbround18/setup-osxcross/v1/osxcross/target/bin:$PATH"
           wget https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
           tar -xzf freetype-2.13.2.tar.gz
           cd freetype-2.13.2
           ./configure --host=x86_64-apple-darwin17 \
-            --prefix=/usr/local/osxcross \
+            --prefix=$HOME/freetype-mac \
             CC=o64-clang CXX=o64-clang++
           make
-          sudo make install
+          make install
 
       - name: Download Poppler source
         run: |
@@ -38,7 +39,7 @@ jobs:
       - name: Configure CMake
         run: |
           mkdir build && cd build
-          SDK_PATH=$(find /usr/local/osxcross -name "MacOSX*.sdk" -type d | head -1)
+          SDK_PATH=$(find /home/runner/work/_actions/mbround18/setup-osxcross/v1/osxcross -name "MacOSX*.sdk" -type d | head -1)
           cmake ../poppler-source \
             -DCMAKE_C_COMPILER=o64-clang \
             -DCMAKE_CXX_COMPILER=o64-clang++ \
@@ -46,8 +47,8 @@ jobs:
             -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
             -DCMAKE_SYSROOT="$SDK_PATH" \
-            -DFREETYPE_INCLUDE_DIRS=/usr/local/osxcross/include/freetype2 \
-            -DFREETYPE_LIBRARY=/usr/local/osxcross/lib/libfreetype.a \
+            -DFREETYPE_INCLUDE_DIRS=$HOME/freetype-mac/include/freetype2 \
+            -DFREETYPE_LIBRARY=$HOME/freetype-mac/lib/libfreetype.a \
             -DBUILD_GTK_TESTS=OFF \
             -DENABLE_QT5=OFF \
             -DENABLE_QT6=OFF \
