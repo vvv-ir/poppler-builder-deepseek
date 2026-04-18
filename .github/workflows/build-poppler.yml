@@ -1,74 +1,42 @@
-name: Build Poppler for High Sierra on Ubuntu
-on:
-  workflow_dispatch:
-  push:
+name: Build Poppler for High Sierra
+on: workflow_dispatch
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/crazy-max/osxcross:latest
     steps:
-      - name: Install build dependencies
+      - name: Install Poppler build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake ninja-build pkg-config \
+          apt-get update
+          apt-get install -y wget cmake ninja-build pkg-config \
             libfontconfig1-dev libcairo2-dev libjpeg-dev \
             libtiff-dev libpng-dev
-
-      - name: Setup OSXCross
-        uses: mbround18/setup-osxcross@v1
-        with:
-          osx-version: "10.13"
-
       - name: Download Poppler source
         run: |
           wget https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
           tar -xf poppler-24.08.0.tar.xz
           mv poppler-24.08.0 poppler-source
-
       - name: Configure CMake
         run: |
           mkdir build && cd build
-          SDK_PATH=$(find /home/runner/work/_actions/mbround18/setup-osxcross/v1/osxcross -name "MacOSX*.sdk" -type d | head -1)
-          if [ -z "$SDK_PATH" ]; then
-            echo "Error: SDK not found"
-            exit 1
-          fi
-          echo "Using SDK: $SDK_PATH"
-          # Добавляем путь к заголовкам libc++ вручную
-          CXX_HEADERS="$SDK_PATH/usr/include/c++/v1"
-          if [ ! -d "$CXX_HEADERS" ]; then
-            echo "Error: libc++ headers not found at $CXX_HEADERS"
-            exit 1
-          fi
           cmake ../poppler-source \
             -DCMAKE_C_COMPILER=o64-clang \
             -DCMAKE_CXX_COMPILER=o64-clang++ \
             -DCMAKE_SYSTEM_NAME=Darwin \
             -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13 \
-            -DCMAKE_SYSROOT="$SDK_PATH" \
-            -DCMAKE_CXX_FLAGS="-I$CXX_HEADERS" \
-            -DCMAKE_C_FLAGS="-I$CXX_HEADERS" \
             -DBUILD_GTK_TESTS=OFF \
             -DENABLE_QT5=OFF \
             -DENABLE_QT6=OFF \
             -DENABLE_OPENSSL=OFF
-
       - name: Build Poppler
         run: |
           cd build
           make -j$(nproc)
-
-      - name: Prepare binaries
-        run: |
-          mkdir poppler-binaries
-          cp build/utils/pdftoppm poppler-binaries/
-          cp build/utils/pdftotext poppler-binaries/
-          cp build/utils/pdfinfo poppler-binaries/
-
-      - name: Upload artifact
+      - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
           name: poppler-high-sierra
-          path: poppler-binaries
+          path: build/utils/pdftoppm build/utils/pdftotext build/utils/pdfinfo
