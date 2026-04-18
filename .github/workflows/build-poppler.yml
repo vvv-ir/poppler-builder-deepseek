@@ -1,4 +1,4 @@
-name: Build Poppler with Full Control (Static Deps)
+name: Build Poppler for High Sierra (Isolated)
 on:
   workflow_dispatch:
   push:
@@ -10,10 +10,10 @@ jobs:
       TARGET_HOST: x86_64-apple-darwin17
       MACOSX_DEPLOYMENT_TARGET: 10.13
       DEPS_DIR: ${{ github.workspace }}/deps
-      PKG_CONFIG_PATH: ${{ github.workspace }}/deps/lib/pkgconfig
+      OSXCROSS_ROOT: ${{ github.workspace }}/osxcross
 
     steps:
-      # 1. Загружаем ваш OSXCross из Release
+      # --- 1. Скачиваем и распаковываем OSXCross из релиза ---
       - name: Download OSXCross from Release
         run: |
           gh release download osxcross-latest \
@@ -25,11 +25,11 @@ jobs:
 
       - name: Extract OSXCross
         run: |
-          mkdir -p osxcross
-          tar -xzf osxcross-toolchain.tar.gz -C osxcross
-          echo "$(pwd)/osxcross/bin" >> $GITHUB_PATH
+          mkdir -p $OSXCROSS_ROOT
+          tar -xzf osxcross-toolchain.tar.gz -C $OSXCROSS_ROOT
+          echo "$OSXCROSS_ROOT/target/bin" >> $GITHUB_PATH
 
-      # 2. Устанавливаем системные инструменты сборки
+      # --- 2. Устанавливаем системные инструменты (только для сборки, не для линковки) ---
       - name: Install system build tools
         run: |
           sudo apt-get update
@@ -37,13 +37,13 @@ jobs:
             build-essential cmake ninja-build pkg-config \
             autoconf automake libtool
 
-      # 3. Готовим директорию для зависимостей
+      # --- 3. Создаём директорию для зависимостей ---
       - name: Create deps directory
         run: |
-          mkdir -p $DEPS_DIR/lib $DEPS_DIR/include
+          mkdir -p $DEPS_DIR/lib $DEPS_DIR/include $DEPS_DIR/bin $DEPS_DIR/share
           echo "PKG_CONFIG_PATH=$DEPS_DIR/lib/pkgconfig" >> $GITHUB_ENV
 
-      # --- 4. Сборка зависимостей ---
+      # --- 4. Сборка всех зависимостей (каждая в своём шаге) ---
       # 4.1 zlib
       - name: Build zlib
         run: |
@@ -52,15 +52,16 @@ jobs:
           ./configure --prefix=$DEPS_DIR --static
           make -j$(nproc) && make install
 
-      # 4.2 libpng
+      # 4.2 libpng (с отключением утилит, чтобы не линковаться с системой)
       - name: Build libpng
         run: |
           wget https://downloads.sourceforge.net/project/libpng/libpng16/1.6.43/libpng-1.6.43.tar.gz
           tar -xzf libpng-1.6.43.tar.gz && cd libpng-1.6.43
-          ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared
+          export PATH=$OSXCROSS_ROOT/target/bin:$PATH
+          ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared --disable-tools
           make -j$(nproc) && make install
 
-      # 4.3 libjpeg-turbo
+      # 4.3 libjpeg-turbo (используем CMake)
       - name: Build libjpeg-turbo
         run: |
           wget https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.0.2.tar.gz
@@ -77,7 +78,8 @@ jobs:
         run: |
           wget https://download.osgeo.org/libtiff/tiff-4.6.0.tar.gz
           tar -xzf tiff-4.6.0.tar.gz && cd tiff-4.6.0
-          ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared
+          export PATH=$OSXCROSS_ROOT/target/bin:$PATH
+          ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared --disable-tools
           make -j$(nproc) && make install
 
       # 4.5 freetype
@@ -85,14 +87,16 @@ jobs:
         run: |
           wget https://download.savannah.gnu.org/releases/freetype/freetype-2.13.2.tar.gz
           tar -xzf freetype-2.13.2.tar.gz && cd freetype-2.13.2
+          export PATH=$OSXCROSS_ROOT/target/bin:$PATH
           ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared
           make -j$(nproc) && make install
 
-      # 4.6 fontconfig
+      # 4.6 fontconfig (требует ручного создания файла конфигурации)
       - name: Build fontconfig
         run: |
           wget https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.gz
           tar -xzf fontconfig-2.15.0.tar.gz && cd fontconfig-2.15.0
+          export PATH=$OSXCROSS_ROOT/target/bin:$PATH
           mkdir -p $DEPS_DIR/etc/fonts && touch $DEPS_DIR/etc/fonts/fonts.conf
           ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared \
             --with-arch=x86_64 --with-expat=no
@@ -103,6 +107,7 @@ jobs:
         run: |
           wget https://cairographics.org/releases/pixman-0.42.2.tar.gz
           tar -xzf pixman-0.42.2.tar.gz && cd pixman-0.42.2
+          export PATH=$OSXCROSS_ROOT/target/bin:$PATH
           ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared
           make -j$(nproc) && make install
 
@@ -111,8 +116,9 @@ jobs:
         run: |
           wget https://cairographics.org/releases/cairo-1.18.0.tar.xz
           tar -xf cairo-1.18.0.tar.xz && cd cairo-1.18.0
+          export PATH=$OSXCROSS_ROOT/target/bin:$PATH
           ./configure --host=$TARGET_HOST --prefix=$DEPS_DIR --disable-shared \
-            --enable-xlib=no --enable-xcb=no
+            --enable-xlib=no --enable-xcb=no --enable-svg=no
           make -j$(nproc) && make install
 
       # 4.9 openjpeg
@@ -138,7 +144,7 @@ jobs:
         run: |
           mkdir build && cd build
           cmake ../poppler-source \
-            -DCMAKE_TOOLCHAIN_FILE=/osxcross/toolchain.cmake \
+            -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/osxcross-toolchain.cmake \
             -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
             -DCMAKE_PREFIX_PATH=$DEPS_DIR \
             -DENABLE_QT5=OFF \
