@@ -1,23 +1,27 @@
-name: Build Poppler with self-built Freetype
+name: Build Poppler using OSXCross
 on:
   push:
   workflow_dispatch:
+
 jobs:
   build-poppler:
     runs-on: ubuntu-22.04
     steps:
-      - name: Install base deps
+      # 1. Установка всех зависимостей для сборки в Ubuntu
+      - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build pkg-config \
             libfontconfig1-dev libcairo2-dev libjpeg-dev \
             libtiff-dev libpng-dev autoconf libtool
 
+      # 2. Настройка OSXCross
       - name: Setup OSXCross
         uses: mbround18/setup-osxcross@v1
         with:
           osx-version: "10.13"
 
+      # 3. Сборка и установка Freetype для macOS
       - name: Build Freetype for macOS
         run: |
           export PATH="/home/runner/work/_actions/mbround18/setup-osxcross/v1/osxcross/target/bin:$PATH"
@@ -30,12 +34,14 @@ jobs:
           make
           make install
 
+      # 4. Скачиваем исходный код Poppler
       - name: Download Poppler source
         run: |
           wget https://poppler.freedesktop.org/poppler-24.08.0.tar.xz
           tar -xf poppler-24.08.0.tar.xz
           mv poppler-24.08.0 poppler-source
 
+      # 5. Настройка сборки Poppler через CMake (с явными путями к Freetype)
       - name: Configure CMake
         run: |
           mkdir build && cd build
@@ -54,11 +60,13 @@ jobs:
             -DENABLE_QT6=OFF \
             -DENABLE_OPENSSL=OFF
 
+      # 6. Компиляция Poppler
       - name: Build Poppler
         run: |
           cd build
           make -j$(nproc)
 
+      # 7. Подготовка и выгрузка готовых бинарных файлов
       - name: Prepare binaries
         run: |
           mkdir poppler-binaries
